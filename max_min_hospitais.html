@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mapa de Internações Hospitalares</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .controls {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input {
+            width: 100%;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ced4da;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #mapa {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        #status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            display: none;
+        }
+        .loading {
+            background-color: #fff3cd;
+            color: #856404;
+            display: block;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <h1>Internações por Hospital</h1>
+    
+    <div class="controls">
+        <div class="control-group">
+            <label for="minimo">Mínimo de internações:</label>
+            <input type="number" id="minimo" value="1" min="0">
+        </div>
+        
+        <div class="control-group">
+            <label for="maximo">Máximo de internações:</label>
+            <input type="number" id="maximo" value="99999999">
+        </div>
+        
+        <button id="aplicar">Aplicar Filtros</button>
+    </div>
+    
+    <div id="status" class="loading">Carregando dados...</div>
+    <div id="mapa"></div>
+
+    <script>
+        // Variáveis globais
+        let dadosHospitais = [];
+        let centroMapa = { lat: -30.0318, lon: -51.2065 };
+        let zoomMapa = 6;
+        
+        // Inicializar a aplicação
+        document.addEventListener('DOMContentLoaded', function() {
+            carregarDados();
+            document.getElementById('aplicar').addEventListener('click', atualizarMapa);
+        });
+        
+        // Função para carregar os dados do JSON
+        async function carregarDados() {
+            const status = document.getElementById('status');
+            status.className = 'loading';
+            status.textContent = 'Carregando dados...';
+            status.style.display = 'block';
+            
+            try {
+                const response = await fetch('max_min_hospitais.json');
+                
+                if (!response.ok) {
+                    throw new Error(`Erro HTTP: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // Verificar estrutura do JSON
+                if (!data.hospitais || !Array.isArray(data.hospitais)) {
+                    throw new Error("Formato inválido do JSON - esperado array 'hospitais'");
+                }
+                
+                dadosHospitais = data.hospitais;
+                
+                // Configurações do mapa (se existirem no JSON)
+                if (data.centro) {
+                    centroMapa = data.centro;
+                }
+                if (data.zoom) {
+                    zoomMapa = data.zoom;
+                }
+                
+                status.style.display = 'none';
+                atualizarMapa();
+                
+            } catch (error) {
+                console.error('Erro ao carregar dados:', error);
+                status.className = 'error';
+                status.textContent = `Erro ao carregar dados: ${error.message}`;
+                
+                // Sugestões para solução de problemas
+                console.log("\nDicas para resolver:");
+                console.log("1. Verifique se 'max_min_hospitais.json' está na mesma pasta");
+                console.log("2. Confira se o JSON é válido (https://jsonlint.com/)");
+                console.log("3. Verifique o console para mensagens de erro detalhadas");
+            }
+        }
+        
+        // Função para atualizar o mapa com os filtros
+        function atualizarMapa() {
+            const minimo = parseInt(document.getElementById('minimo').value) || 0;
+            const maximo = parseInt(document.getElementById('maximo').value) || 99999999;
+            
+            // Filtrar os dados
+            const dadosFiltrados = dadosHospitais.filter(h => 
+                h.counts >= minimo && h.counts <= maximo
+            );
+            
+            // Criar o gráfico
+            const data = [{
+                type: 'scattermapbox',
+                lat: dadosFiltrados.map(h => h.latitude),
+                lon: dadosFiltrados.map(h => h.longitude),
+                mode: 'markers',
+                marker: {
+                    size: dadosFiltrados.map(h => Math.min(50, 5 + h.counts * 0.5)),
+                    color: dadosFiltrados.map(h => h.counts),
+                    colorscale: 'Viridis',
+                    opacity: 0.8,
+                    showscale: true,
+                    colorbar: {
+                        title: 'Nº de Internações'
+                    }
+                },
+                text: dadosFiltrados.map(h => 
+                    `<b>${h.nome_hospital}</b><br>Internações: ${h.counts}`
+                ),
+                hoverinfo: 'text'
+            }];
+            
+            const layout = {
+                mapbox: {
+                    style: 'carto-positron',
+                    center: centroMapa,
+                    zoom: zoomMapa
+                },
+                margin: { t: 30, b: 0, l: 0, r: 0 },
+                title: 'Internações por Hospital',
+                width: 900,
+                height: 600
+            };
+            
+            Plotly.newPlot('mapa', data, layout);
+        }
+    </script>
+</body>
+</html>

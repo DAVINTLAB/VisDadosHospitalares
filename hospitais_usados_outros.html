@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Cidades que usaram um Hospital</title>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h1, h4 { text-align: center; }
+    input, #suggestions { width: 50%; padding: 10px; font-size: 16px; margin: 0 auto; display: block; }
+    #suggestions {
+      border: 1px solid #ccc; background-color: #fff;
+      max-height: 200px; overflow-y: auto;
+      position: absolute; z-index: 999; left: 25%; right: 25%;
+    }
+    .suggestion-item { padding: 5px; cursor: pointer; }
+    .suggestion-item:hover { background-color: #f0f0f0; }
+    #mapa { width: 100%; height: 600px; margin-top: 20px; }
+    #lista-cidades { margin-top: 20px; text-align: center; }
+  </style>
+</head>
+<body>
+
+<h1>Cidades que usaram um Hospital</h1>
+<input type="text" id="busca-hospital" placeholder="Digite o nome do hospital...">
+<div id="suggestions"></div>
+
+<div id="mapa"></div>
+<div id="lista-cidades"></div>
+
+<script>
+let dadosJson = {};
+
+axios.get('hospitais_uso_por_cidade.json').then(response => {
+  dadosJson = response.data;
+
+  const input = document.getElementById('busca-hospital');
+  const suggestionsBox = document.getElementById('suggestions');
+
+  input.addEventListener('input', () => {
+    const query = input.value.toLowerCase();
+    suggestionsBox.innerHTML = '';
+
+    if (query.length < 2) return;
+
+    const matches = Object.keys(dadosJson).filter(hospital =>
+      hospital.toLowerCase().includes(query)
+    );
+
+    matches.forEach(match => {
+      const item = document.createElement('div');
+      item.classList.add('suggestion-item');
+      item.textContent = match;
+      item.onclick = () => {
+        input.value = match;
+        suggestionsBox.innerHTML = '';
+        desenharMapa(match, dadosJson[match]);
+      };
+      suggestionsBox.appendChild(item);
+    });
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!input.contains(e.target) && !suggestionsBox.contains(e.target)) {
+      suggestionsBox.innerHTML = '';
+    }
+  });
+});
+
+function desenharMapa(nomeHospital, data) {
+  const cidades = data.cidades_que_usaram;
+  const figData = [{
+    type: 'scattermapbox',
+    lat: cidades.map(c => c.latitude),
+    lon: cidades.map(c => c.longitude),
+    text: cidades.map(c => `${c.cidade}: ${c.quantidade} pessoas`),
+    marker: {
+      size: cidades.map(c => Math.min(50, 5 + c.quantidade * 0.5)),
+      color: cidades.map(c => c.quantidade),
+      colorscale: 'Viridis',
+      showscale: true
+    },
+    hoverinfo: 'text'
+  }];
+
+  const layout = {
+    mapbox: {
+      style: 'carto-positron',
+      center: { lat: -30.03, lon: -51.20 },
+      zoom: 6
+    },
+    title: `Cidades que enviaram pessoas para o hospital: ${nomeHospital}`,
+    margin: { t: 40, b: 0, l: 0, r: 0 }
+  };
+
+  Plotly.newPlot('mapa', figData, layout);
+
+  const lista = document.getElementById("lista-cidades");
+  if (cidades.length === 0) {
+    lista.innerHTML = `<h4>Nenhuma cidade externa cadastrada para este hospital.</h4>`;
+    return;
+  }
+
+  lista.innerHTML = `<h4>Cidades que usaram o hospital ${nomeHospital}:</h4>` +
+    cidades.map(c => `<div>${c.cidade}: ${c.quantidade} pessoas</div>`).join('');
+}
+</script>
+
+</body>
+</html>
